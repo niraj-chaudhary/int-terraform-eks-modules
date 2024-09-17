@@ -1,0 +1,67 @@
+# Overview
+-------
+This Terraform configuration provisions a Kubernetes (EKS) cluster on AWS with modular, reusable code. The setup is designed to be used across multiple environments—development, staging, and production. Basic networking policies, including private subnets for EKS and worker nodes, are also configured.
+
+* Key Components:
+
+VPC with public and private subnets
+IAM Roles and Policies for EKS and worker nodes
+EKS Cluster and Auto Scaling groups for worker nodes
+Network Security Groups
+Remote S3 Backend for storing Terraform state
+
+# The directory structure keeps the code modular and reusable. Separate modules are used for VPC, IAM, EKS, and network policies.
+
+terraform-eks-cluster/
+│
+├── backend.tf                  # Remote state configuration (S3, DynamoDB)
+├── main.tf                     # Main configuration file to call modules
+├── outputs.tf                  # Output configuration
+├── variables.tf                # Global variables
+│
+├── env/                        # Environment-specific variable files
+│   ├── dev.tfvars              # Variables for development environment
+│   ├── staging.tfvars          # Variables for staging environment
+│   └── prod.tfvars             # Variables for production environment
+│
+├── modules/                    # Reusable modules for different resources
+│   ├── vpc/
+│   │   └── main.tf             # VPC creation with public and private subnets
+│   ├── iam/
+│   │   └── main.tf             # IAM Roles for EKS and Worker nodes
+│   ├── eks/
+│   │   └── main.tf             # EKS Cluster and worker nodes
+│   └── network-policies/
+│       └── main.tf             # Basic networking policies (security groups)
+
+
+# Environment-Specific Configuration
+For each environment (development, staging, production), we have corresponding .tfvars files. These files contain the variable values specific to that environment, allowing for easy configuration adjustments without modifying the core infrastructure code.
+
+For example:
+
+* Development: Smaller node count, lower capacity, possibly cheaper instance types.
+* Staging: Medium-sized node count, moderate capacity.
+* Production: Larger node count, higher capacity, stronger instance types for production workload.
+
+# Modules
+The code is structured into several modules, each performing a distinct role
+
+* VPC Module: The VPC module provisions the VPC, public, and private subnets required for the EKS cluster.
+
+* IAM Module: The IAM module provisions the necessary IAM roles and policies for the EKS cluster and worker nodes.
+
+* EKS Module: The EKS module provisions the EKS cluster along with Auto Scaling worker nodes.
+
+# Instructions to Deploy
+ * Install Terraform
+ * Clone Repository
+ * Initialize Terrafor
+    CMD: terraform init
+ * Apply Terraform for Development Environment: Use the dev.tfvars to create the cluster in the development environment.
+    CMD: terraform apply -var-file="env/dev.tfvars"
+ * Apply Terraform for Staging Environment: Use the staging.tfvars for staging.
+    CMD: terraform apply -var-file="env/staging.tfvars"
+ * Apply Terraform for Production Environment: Use the prod.tfvars for production.
+    CMD: terraform apply -var-file="env/prod.tfvars"
+ * Clean Up Resources: When you are done and want to delete the resources, run: terraform destroy -var-file="env/prod.tfvars"
