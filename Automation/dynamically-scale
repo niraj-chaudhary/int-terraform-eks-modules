@@ -1,0 +1,141 @@
+To implement dynamic scaling in Kubernetes based on real-time metrics like CPU, memory, and network usage, we can leverage Horizontal Pod Autoscaler (HPA), Vertical Pod Autoscaler (VPA), and Cluster Autoscaler. These tools enable Kubernetes to adjust resource allocation based on real-time metrics
+# Note: Cluster Autoscaler and Karpenter are both tools for managing cluster scaling in Kubernetes but here i have taken Cluster Autoscaler as a example.
+
+1. Cluster Autoscaler: The Cluster Autoscaler automatically adjusts the number of nodes in your cluster based on the resource requirements of your workloads.
+a. Cluster Autoscaler Configuration
+    1) Install Cluster Autoscaler on your Kubernetes cluster:
+    kubectl apply -f https://github.com/kubernetes/autoscaler/releases/download/cluster-autoscaler-chart/cluster-autoscaler-1.21.0.yaml
+    2) Configure Cluster Autoscaler to scale worker node group:
+    apiVersion: apps/v1
+    kind: Deployment
+    metadata:
+      name: cluster-autoscaler
+      namespace: kube-system
+    spec:
+      replicas: 1
+      selector:
+        matchLabels:
+          app: cluster-autoscaler
+      template:
+        metadata:
+          labels:
+            app: cluster-autoscaler
+        spec:
+          containers:
+          - image: k8s.gcr.io/autoscaling/cluster-autoscaler:v1.21.0
+            name: cluster-autoscaler
+            command:
+              - ./cluster-autoscaler
+              - --v=4
+              - --stderrthreshold=info
+              - --cloud-provider=aws
+              - --skip-nodes-with-local-storage=false
+              - --nodes=1:10:your-node-group-name
+    3) Scaling Behavior: 
+        * The Cluster Autoscaler checks for unscheduled pods and scales up nodes if there aren't enough resources.
+        * It also scales down nodes if they are underutilized and the workloads can fit on other nodes
+
+2. Monitoring and Visualization
+    To monitor and visualize the scaling activities, we can integrate Prometheus and Grafana for detailed insights into metrics, node health, and scaling events:
+    * Prometheus: Collects metrics from HPA, VPA, and other components.
+    * Grafana: Visualizes the metrics and scaling trends in real time.
+
+3. Horizontal Pod Autoscaler (HPA) : The Horizontal Pod Autoscaler scales the number of replicas of a pod in a deployment based on real-time CPU, memory, or custom metrics. 
+a) Ensure Metrics Server is Running: HPA requires metrics from the metrics server to make scaling decisions based on CPU, memory, and custom metrics.
+  1) Install Metrics Server if not already installed:
+     kubectl apply -f https://github.com/kubernetes-sigs/metrics-server/releases/latest/download/components.yaml
+  2) Verify it's running: 
+  kubectl get apiservice v1beta1.metrics.k8s.io -o json | jq '.status'
+b) setting up HPA to scale a deployment based on CPU usage
+  1) Sample Deployment (e.g., Nginx):
+  apiVersion: apps/v1
+  kind: Deployment
+  metadata:
+    name: nginx-deployment
+  spec:
+    replicas: 2
+    selector:
+      matchLabels:
+        app: nginx
+    template:
+      metadata:
+        labels:
+          app: nginx
+      spec:
+        containers:
+        - name: nginx
+          image: nginx
+          resources:
+            requests:
+              cpu: "100m"
+            limits:
+              cpu: "500m"
+
+  2) Horizontal Pod Autoscaler Configuration:
+     kubectl autoscale deployment nginx-deployment --cpu-percent=50 --min=2 --max=10
+    This command will create an HPA that scales the number of replicas for nginx-deployment based on CPU usage. If the CPU usage exceeds 50% for the deployment, Kubernetes will scale the pods between 2 and 10 replicas.
+
+  3) Custom HPA YAML:
+   apiVersion: autoscaling/v2
+   kind: HorizontalPodAutoscaler
+   metadata:
+     name: nginx-hpa
+   spec:
+     scaleTargetRef:
+       apiVersion: apps/v1
+       kind: Deployment
+       name: nginx-deployment
+     minReplicas: 2
+     maxReplicas: 10
+     metrics:
+     - type: Resource
+       resource:
+         name: cpu
+         target:
+           type: Utilization
+           averageUtilization: 50
+  4) Custom Metrics: To use custom metrics such as network usage or other application-specific metrics, you can integrate Prometheus Adapter to expose custom metrics and then configure HPA to act on them.
+  * Install Prometheus Adapter to expose custom metrics.
+  * Define HPA with custom metrics:
+   apiVersion: autoscaling/v2
+   kind: HorizontalPodAutoscaler
+   metadata:
+     name: nginx-hpa
+   spec:
+     scaleTargetRef:
+       apiVersion: apps/v1
+       kind: Deployment
+       name: nginx-deployment
+     minReplicas: 2
+     maxReplicas: 10
+     metrics:
+     - type: Pods
+       pods:
+         metric:
+           name: custom_metric_name  # The name of the custom metric
+         target:
+           type: AverageValue
+           averageValue: 100Mi
+  * Monitoring HPA Status : kubectl get hpa
+
+4. Vertical Pod Autoscaler (VPA):The Vertical Pod Autoscaler adjusts the resource requests and limits (CPU, memory) of running pods to ensure they are optimally utilized based on real-time resource consumption. This avoids over-provisioning or under-provisioning.
+a) Install VPA:
+   * kubectl apply -f https://github.com/kubernetes/autoscaler/releases/download/vertical-pod-autoscaler-0.10.0/vpa-v0.10.0.yaml
+b) VPA Configuration:
+   * Sample VPA Configuration:
+     apiVersion: autoscaling.k8s.io/v1
+     kind: VerticalPodAutoscaler
+     metadata:
+       name: nginx-vpa
+     spec:
+       targetRef:
+         apiVersion: "apps/v1"
+         kind:       Deployment
+         name:       nginx-deployment
+       updatePolicy:
+         updateMode: "Auto"
+c) VPA Modes:
+  * Off: Only recommendations are generated, no updates are applied.
+  * Initial: Only applies resource changes when pods are created or recreated.
+  * Auto: Automatically updates resources (requests and limits) of running pods based on real-time usage.
+
